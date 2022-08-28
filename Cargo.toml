@@ -1,5 +1,5 @@
 [package]
-name = "kmod-patch"
+name = "candycorn"
 version = "0.1.0"
 edition = "2021"
 description = "Tool to patch kernel module versioning data"

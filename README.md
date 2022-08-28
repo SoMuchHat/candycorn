@@ -1,14 +1,15 @@
-# kmod-patch
-`kmod-patch` is a tool to patch a compiled kernel module to force insertion into systems where the exact kernel source tree is unavailable or hard to find. The target kernel module can first be compiled with different but similar kernel source then patched with `kmod-patch` to force insertion into target kernel.
+# candycorn
+`candycorn` is a tool to patch a compiled kernel module to force insertion into systems where the exact kernel source tree is unavailable or hard to find. The target kernel module can first be compiled with different but similar kernel source then patched with `candycorn` to force insertion into target kernel.
 
-`kmod-patch` will not handle patching for kernel modules that must be signed to be loaded (`CONFIG_MODULE_SIG`). `kmod-patch` does not guarantee that the patched kernel module is safe to load.
+`candycorn` will not handle patching for kernel modules that must be signed to be loaded (`CONFIG_MODULE_SIG`). `candycorn` does not guarantee that the patched kernel module is safe to load.
 
 ## Example
 Patch just `module_layout` CRC with provided value 0xDEADBEEF:
-`kmod-patch -m 3735928559 ./target.ko`
+
+`candycorn -m 3735928559 ./target.ko`
 
 Patch all symbol CRCs in find in target that are also in the source kernel module compiled for target kernel (`reference.ko`)
-`kmod-patch -s ./reference.ko ./target.ko`
+`candycorn -s ./reference.ko ./target.ko`
 
 ## How it works
 Linux kernel modules are typically compiled with a kernel source tree. There are a number of configuration options that affect how kernel modules are verified upon being loaded into a system:
