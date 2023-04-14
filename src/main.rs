@@ -172,16 +172,26 @@ fn main() {
             None => { std::process::exit(1); },
         };
 
+        let mut misses = HashMap::new();
         for name in t_versions.keys() {
             match s_versions.get(name) {
                 Some(s_ver) => { 
                     let off = t_versions[name].offset;
                     println!(
-                        "Found version symbol \"{}\" in source with CRC 0x{:x}",
+                        "Patching version \"{}\" in target with source CRC 0x{:x}",
                         name, s_ver.crc);
                     t_buffer.splice(off..off+8, s_ver.crc.to_le_bytes());
                 },
-                None => {},
+                None => {
+                    misses.insert(name, t_versions[name].crc);
+                },
+            }
+        }
+
+        if misses.len() > 0 {
+            eprintln!("Target versions not found in source module:");
+            for name in misses.keys() {
+                eprintln!("    \"{}\" - 0x{:x}", name, misses[name]);
             }
         }
     }
