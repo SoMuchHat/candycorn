@@ -1,25 +1,37 @@
-use clap::Parser;
+use clap::{Parser, Subcommand};
 use goblin;
 use std::collections::HashMap;
 
-#[derive(Parser, Debug)]
+#[derive(Parser)]
 #[clap(about, long_about = None)]
 struct Args {
-    /// Reference kernel module to use for obtaining symbol versions
-    #[clap(short, long, parse(from_os_str))]
-    src: Option<std::path::PathBuf>,
-
-    /// Module layout version value to patch into target
-    #[clap(short, long, value_parser, required_unless("src"))]
-    module_layout_version: Option<u64>,
-
-    /// Keep the original target and write modified output to a new file
-    #[clap(short, long, value_parser)]
-    keep: Option<bool>,
 
     /// Target kernel module to patch
     #[clap(required(true), parse(from_os_str))]
     target: std::path::PathBuf,
+
+    #[clap(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Patch the target's symbol versions
+    Patch {
+        /// Reference kernel module to use for obtaining symbol versions
+        #[clap(short, long, parse(from_os_str))]
+        src: Option<std::path::PathBuf>,
+
+        /// Module layout version value to patch into target
+        #[clap(short, long, value_parser, required_unless("src"))]
+        module_layout_version: Option<u64>,
+
+        /// Keep the original target and write modified output to a new file
+        #[clap(short, long, value_parser)]
+        keep: Option<bool>,
+    },
+    /// List the target's symbol versions
+    List,
 }
 
 /// Attempts to find a ELF section header matching provided name
@@ -106,53 +118,12 @@ fn get_versions(info: &goblin::elf::Elf, mod_data: &Vec<u8>)
     Some(versions)
 }
 
-fn main() {
-    let args = Args::parse();
-   
-    // Try to open and read target file
-    let mut out_path = args.target.clone();
-    let mut t_buffer = match std::fs::read(args.target) {
-        Ok(buf) => buf,
-        Err(e) => {
-            eprintln!("{}", e);
-            std::process::exit(1);
-        }
-    };
+fn patch(src: Option<std::path::PathBuf>, module_layout_version: Option<u64>, 
+         keep: Option<bool>, mut t_buffer: Vec<u8>, t_versions: HashMap<String, SymVersion>) {
     
-    // Try to parse target ELF
-    let t_ko = match goblin::elf::Elf::parse(&t_buffer) {
-        Ok(binary) => binary,
-        Err(e) => {
-            eprintln!("Failed to parse target kernel module -- {}", e);
-            std::process::exit(1);
-        }
-    };
-
-    // Check if target has a "__versions" section. If not, exit.
-    // If target kernel was compiled with `CONFIG_MODULE_FORCE_LOAD`, this is
-    // OK as target doesn't need patched
-    let versions_sh = find_section(&t_ko, "__versions");
-    if versions_sh.is_none() {
-        println!("WARNING: `__versions` section not found in target.\n\
-                  This may or may not be a problem depending on if target \
-                  kernel was compiled with `CONFIG_MODULE_FORCE_LOAD`. If \
-                  this configuration is enabled, the target module to patch \
-                  must have a `__versions` section. If disabled, no patching \
-                  is required to force load target.");
-        return;
-    }
-
-    // TODO: Improve unwrap by returning useful errors
-    let t_versions = get_versions(&t_ko, &t_buffer).unwrap();
-
-    // Get endianness 
-    // We no longer need the target ELF data and holding it any longer will
-    // prevent updating the backing target buffer
-    drop(t_ko);
-
     // See if source kernel module was provided and handle
-    if args.src.is_some() {
-        let s_buffer = match std::fs::read(args.src.as_ref().unwrap()) {
+    if src.is_some() {
+        let s_buffer = match std::fs::read(src.as_ref().unwrap()) {
             Ok(buf) => buf,
             Err(e) => {
                 eprintln!("{}", e);
@@ -199,21 +170,89 @@ fn main() {
     // If user provided "layout_module" crc manually, apply it now. This will
     // overwrite the "layout_module" provided by the source kernel module if
     // it existed
-    if args.module_layout_version.is_some() {
+    if module_layout_version.is_some() {
         let t_module_layout = t_versions.get("module_layout")
                     .expect("Unable to find \"module_layout\" symbol version");
         let off = t_module_layout.offset;
         println!("Patching \"{}\" in target with CRC 0x{:x}", "module_layout", 
-                    args.module_layout_version.unwrap());
-        t_buffer.splice(off..off+8, args.module_layout_version.unwrap()
+                    module_layout_version.unwrap());
+        t_buffer.splice(off..off+8, module_layout_version.unwrap()
                         .to_le_bytes());
     }
 
     // Write out result
     // TODO: Handle keep option or provide new option to specify output path
-    let mut new_filename = out_path.file_name().unwrap().to_os_string();
-    new_filename.push(".patch");
-    out_path.set_file_name(new_filename);
+    //let mut new_filename = out_path.file_name().unwrap().to_os_string();
+    //new_filename.push(".patch");
+    //out_path.set_file_name(new_filename);
     std::fs::write(std::path::Path::new("./test.ko"), t_buffer).unwrap();
+}
+
+fn list(t_versions: HashMap<String, SymVersion>) {
+    let mut v: Vec<_> = t_versions.iter().collect();
+    
+    // List sorted by order in ELF (file offset)
+    v.sort_by(|a, b| a.1.offset.cmp(&b.1.offset));
+    for version in v {
+        let name = version.0;
+        let ver = version.1;
+        println!("0x{:x}: \"{}\", 0x{:x}", ver.offset,
+                    name, ver.crc);
+    }
+}
+
+fn main() {
+    let args = Args::parse();
+   
+    // Try to open and read target file
+    //let mut out_path = args.target.clone();
+    let t_buffer = match std::fs::read(args.target) {
+        Ok(buf) => buf,
+        Err(e) => {
+            eprintln!("{}", e);
+            std::process::exit(1);
+        }
+    };
+    
+    // Try to parse target ELF
+    let t_ko = match goblin::elf::Elf::parse(&t_buffer) {
+        Ok(binary) => binary,
+        Err(e) => {
+            eprintln!("Failed to parse target kernel module -- {}", e);
+            std::process::exit(1);
+        }
+    };
+
+    // Check if target has a "__versions" section. If not, exit.
+    // If target kernel was compiled with `CONFIG_MODULE_FORCE_LOAD`, this is
+    // OK as target doesn't need patched
+    let versions_sh = find_section(&t_ko, "__versions");
+    if versions_sh.is_none() {
+        println!("WARNING: `__versions` section not found in target.\n\
+                  This may or may not be a problem depending on if target \
+                  kernel was compiled with `CONFIG_MODULE_FORCE_LOAD`. If \
+                  this configuration is enabled, the target module to patch \
+                  must have a `__versions` section. If disabled, no patching \
+                  is required to force load target.");
+        return;
+    }
+
+    // TODO: Improve unwrap by returning useful errors
+    let t_versions = get_versions(&t_ko, &t_buffer).unwrap();
+
+    // Get endianness 
+    // We no longer need the target ELF data and holding it any longer will
+    // prevent updating the backing target buffer
+    drop(t_ko);
+
+    match args.command {
+        Commands::Patch { src, module_layout_version, keep } => {
+            patch(src, module_layout_version, keep, t_buffer, t_versions); 
+        },
+        Commands::List => {
+            list(t_versions);
+        },
+    }
+
     println!("Done!");
 }
