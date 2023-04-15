@@ -3,13 +3,39 @@
 
 `candycorn` will not handle patching for kernel modules that must be signed to be loaded (`CONFIG_MODULE_SIG`). `candycorn` does not guarantee that the patched kernel module is safe to load.
 
-## Example
+## Usage
+```
+USAGE:
+    candycorn <TARGET> <SUBCOMMAND>
+
+ARGS:
+    <TARGET>    Target kernel module to patch
+
+OPTIONS:
+    -h, --help    Print help information
+
+SUBCOMMANDS:
+    help     Print this message or the help of the given subcommand(s)
+    list     List the target's symbol versions
+    patch    Patch the target's symbol versions
+```
+
+## Examples
+### List Symbol Versions
+```
+candycorn ./example.ko list
+0x128: "module_layout", 0x54f9a716
+0x168: "_mcount", 0x1fdc7df2
+Done!
+```
+
+### Patching Symbol Versions
 Patch just `module_layout` CRC with provided value 0xDEADBEEF:
 
-`candycorn -m 3735928559 ./target.ko`
+`candycorn ./target.ko patch -m 3735928559`
 
-Patch all symbol CRCs in find in target that are also in the source kernel module compiled for target kernel (`reference.ko`)
-`candycorn -s ./reference.ko ./target.ko`
+Patch all symbol CRCs in find in target that are also in the source kernel module (`reference.ko`)
+`candycorn ./target.ko patch -s ./reference.ko`
 
 ## How it works
 Linux kernel modules are typically compiled with a kernel source tree. There are a number of configuration options that affect how kernel modules are verified upon being loaded into a system:
