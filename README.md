@@ -31,11 +31,14 @@ Done!
 
 ### Patching Symbol Versions
 Patch just `module_layout` CRC with provided value 0xDEADBEEF:
-
-`candycorn ./target.ko patch -m 3735928559`
+```
+candycorn ./target.ko patch -m 3735928559
+```
 
 Patch all symbol CRCs in find in target that are also in the source kernel module (`reference.ko`)
-`candycorn ./target.ko patch -s ./reference.ko`
+```
+candycorn ./target.ko patch -s ./reference.ko
+```
 
 ## How it works
 Linux kernel modules are typically compiled with a kernel source tree. There are a number of configuration options that affect how kernel modules are verified upon being loaded into a system:
